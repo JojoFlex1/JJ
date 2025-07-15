@@ -14,12 +14,12 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 })
 
-// const defaultUrl = process.env.VERCEL_URL
-//   ? `https://blendify-kappa.vercel.app/`
-//   : 'http://localhost:3000'
+const defaultUrl = process.env.VERCEL_URL
+  ? `https://dustaggregator.vercel.app/`
+  : 'http://localhost:3002'
 
 export const metadata: Metadata = {
-  // metadataBase: new URL(defaultUrl),
+  metadataBase: new URL(defaultUrl),
   title: 'Dust Accelerator',
   description:
     'A platform that allows you to collect small, unusable balances from different wallets, batch process them to reduce gas fees, and transfer to Stellar via Soroban.',
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
     title: 'Dust Accelerator - Batch dust and send via Stellar.',
     description:
       'A platform that allows you to collect small, unusable balances from different wallets, batch process them to reduce gas fees, and transfer to Stellar via Soroban.',
-    // url: 'https://blendify-kappa.vercel.app/',
+    url: 'https://dustaggregator.vercel.app/',
     siteName: 'Dust-Accelerator',
     images: [
       {
@@ -81,9 +81,9 @@ export const metadata: Metadata = {
     apple: '/images/dustLogo.png', // optional
   },
 
-  // alternates: {
-  //   canonical: 'https://blendify-kappa.vercel.app/',
-  // },
+  alternates: {
+    canonical: 'https://dustaggregator.vercel.app/',
+  },
 }
 
 export default function RootLayout({
