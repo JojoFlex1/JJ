@@ -38,7 +38,7 @@ const CardSection = ({
 
 export default function ScrollComponent() {
   return (
-    <ScrollArea className="h-72 rounded-md border w-full">
+    <ScrollArea className="h-44 rounded-md border w-full">
       <div className="p-4">
         <CardSection token="Ethereum" tokenShort="ETH" price={0.42} />
         <Separator className=" my-2" />
