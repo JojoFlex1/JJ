@@ -1,27 +1,65 @@
 'use client'
-import WalletCardComponent from './WalletCard'
 import { Button } from './ui/button'
 import { RefreshCcw } from 'lucide-react'
 import ScrollComponent from './ScrollIn'
 import ProcessingButtonCardComponent from './ProcessingButtonCard'
+import {
+  Card,
+  CardContent,
+  CardTitle,
+} from '@/components/ui/card'
+
+import { BorderBeam } from '@/components/magicui/border-beam'
+import StellarWalletButton from './StellarWallet'
+
 
 export default function CollectDustComponent() {
   return (
     <div>
-      <div>
-        <WalletCardComponent
-          wallet={'Ethereum Wallet'}
-          description="0x1a2...3b4c"
-        />
-        <WalletCardComponent
-          wallet={'Stellar Wallet'}
-          description="0x5d6...7e8f"
-        />
-        <WalletCardComponent
-          wallet={'Starknet Wallet'}
-          description="0x9g0...1h2i"
-        />
-      </div>
+      <Card className="relative overflow-hidden p-2 mb-2">
+      <CardContent className=' flex items-center justify-between '>
+        <div>
+            <CardTitle>Stellar Wallet</CardTitle>
+            
+        </div>
+        <div>
+            <StellarWalletButton/>
+        </div>
+      </CardContent>
+
+      <BorderBeam duration={8} size={100} />
+      </Card>
+      
+
+      <Card className="relative overflow-hidden p-2 mb-2">
+      <CardContent className=' flex items-center justify-between '>
+        <div>
+            <CardTitle>Starknet Wallet</CardTitle>
+            
+        </div>
+        <div>
+            <Button
+              className="relative overflow-hidden"
+              size="lg"
+              variant="outline"
+            >
+              Connect
+              <BorderBeam
+                size={40}
+                initialOffset={20}
+                className="from-transparent via-yellow-500 to-transparent"
+                transition={{
+                  type: 'spring',
+                  stiffness: 60,
+                  damping: 20,
+                }}
+              />
+            </Button>
+        </div>
+      </CardContent>
+
+      <BorderBeam duration={8} size={100} />
+    </Card>
       <div className=" flex items-center justify-between mt-6 mb-4">
         <h1 className=" font-bold text-lg">Dust Balances</h1>
         <Button variant={'outline'}>
