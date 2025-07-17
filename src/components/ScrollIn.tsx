@@ -1,8 +1,7 @@
 'use client'
 
-import React, {  useState } from 'react'
-import { connect as connectStarknet } from 'starknetkit'
-import { RpcProvider, Contract, uint256 } from 'starknet'
+import React, { useState } from 'react'
+import { connect } from 'starknetkit'
 import {
   StellarWalletsKit,
   WalletNetwork,
@@ -29,6 +28,7 @@ import {
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
+import { RpcProvider, uint256 } from 'starknet'
 
 interface TokenInfo {
   address: string
@@ -79,15 +79,6 @@ const TOKENS: Record<string, TokenInfo> = {
   },
 }
 
-const ERC20_ABI = [
-  {
-    name: 'balanceOf',
-    type: 'function',
-    inputs: [{ name: 'account', type: 'felt' }],
-    outputs: [{ name: 'balance', type: 'Uint256' }],
-  },
-]
-
 let stellarWalletKit: StellarWalletsKit | null = null
 
 function initStellarKit(): StellarWalletsKit {
@@ -137,34 +128,57 @@ export default function WalletBalances() {
   const [starknetAddress, setStarknetAddress] = useState<string | null>(null)
   const [stellarAddress, setStellarAddress] = useState<string | null>(null)
 
+  const provider = new RpcProvider({
+  nodeUrl: 'https://starknet-sepolia.public.blastapi.io',
+})
+
   const fetchStarknetBalances = async () => {
-    const provider = new RpcProvider({ nodeUrl: 'https://starknet-mainnet.public.blastapi.io' })
-    const { wallet } = await connectStarknet({
-      webWalletUrl: 'https://web.argent.xyz',
-      dappName: 'Your DApp',
+  try {
+    const { wallet } = await connect({
+      dappName: 'Balance Checker',
       modalMode: 'canAsk',
+      modalTheme: 'light',
     })
-    interface WalletLike {
-  selectedAddress?: string
-  selectedAccount?: { address: string }
-  account?: { address: string }
+
+    interface SafeWallet {
+      isConnected?: boolean
+      selectedAddress?: string
+    }
+
+    const safeWallet = wallet as SafeWallet
+
+    if (safeWallet?.isConnected) {
+      const address = safeWallet.selectedAddress ?? null
+      setStarknetAddress(address)
+      if (!address) return
+
+      const balancesObj: Balances = {}
+      for (const [, token] of Object.entries(TOKENS)) {
+        const result = await provider.callContract({
+          contractAddress: token.address,
+          entrypoint: 'balanceOf',
+          calldata: [address],
+        })
+
+        if (result.length >= 2) {
+          const balance = uint256.uint256ToBN({
+            low: result[0],
+            high: result[1],
+          })
+          balancesObj[token.symbol] =
+            Number(balance.toString()) / Math.pow(10, token.decimals)
+        } else {
+          balancesObj[token.symbol] = 0
+        }
+      }
+
+      setStarknetBalances(balancesObj)
+    }
+  } catch (err) {
+    console.error('Failed to fetch Starknet balances:', err)
+  }
 }
 
-const w = wallet as WalletLike
-const address = w.selectedAddress || w.selectedAccount?.address || w.account?.address
-
-    setStarknetAddress(address  ?? null)
-    if (!address) return
-
-    const balancesObj: Balances = {}
-    for (const [, token] of Object.entries(TOKENS)) {
-      const contract = new Contract(ERC20_ABI, token.address, provider)
-      const result = await contract.balanceOf(address)
-      const balance = uint256.uint256ToBN(result.balance)
-      balancesObj[token.symbol] = Number(balance.toString()) / 10 ** token.decimals
-    }
-    setStarknetBalances(balancesObj)
-  }
 
   const fetchStellarBalances = async () => {
     const kit = initStellarKit()
