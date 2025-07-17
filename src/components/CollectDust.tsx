@@ -1,7 +1,6 @@
 'use client'
 import { Button } from './ui/button'
 import { RefreshCcw } from 'lucide-react'
-import ScrollComponent from './ScrollIn'
 import ProcessingButtonCardComponent from './ProcessingButtonCard'
 import {
   Card,
@@ -12,6 +11,7 @@ import {
 import { BorderBeam } from '@/components/magicui/border-beam'
 import StellarWalletButton from './StellarWallet'
 import StarknetWalletButton from './StarknetWallet'
+import ScrollComponent from './ScrollIn'
 
 
 export default function CollectDustComponent() {
