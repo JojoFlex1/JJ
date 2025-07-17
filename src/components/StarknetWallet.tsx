@@ -52,7 +52,7 @@ export default function StarknetWalletButton() {
   }
   return (
     <div className="flex flex-col gap-2">
-      <div className="p-2 bg-gray-100 rounded-lg ">
+      <div className="p-2 bg-accent text-foreground rounded-lg ">
         Connected: {address?.slice(0, 6)}...{address?.slice(-4)}
       </div>
       <Button
