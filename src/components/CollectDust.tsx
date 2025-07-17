@@ -60,6 +60,35 @@ export default function CollectDustComponent() {
 
       <BorderBeam duration={8} size={100} />
     </Card>
+      <Card className="relative overflow-hidden p-2 mb-2">
+      <CardContent className=' flex items-center justify-between '>
+        <div>
+            <CardTitle>Ethereum Wallet</CardTitle>
+            
+        </div>
+        <div>
+            <Button
+              className="relative overflow-hidden"
+              size="lg"
+              variant="outline"
+            >
+              Connect
+              <BorderBeam
+                size={40}
+                initialOffset={20}
+                className="from-transparent via-yellow-500 to-transparent"
+                transition={{
+                  type: 'spring',
+                  stiffness: 60,
+                  damping: 20,
+                }}
+              />
+            </Button>
+        </div>
+      </CardContent>
+
+      <BorderBeam duration={8} size={100} />
+    </Card>
       <div className=" flex items-center justify-between mt-6 mb-4">
         <h1 className=" font-bold text-lg">Dust Balances</h1>
         <Button variant={'outline'}>
