@@ -1,8 +1,23 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { connect } from 'starknetkit'
+import React, {  useState } from 'react'
+import { connect as connectStarknet } from 'starknetkit'
 import { RpcProvider, Contract, uint256 } from 'starknet'
+import {
+  StellarWalletsKit,
+  WalletNetwork,
+  XBULL_ID,
+} from '@creit.tech/stellar-wallets-kit'
+import {
+  WalletConnectAllowedMethods,
+  WalletConnectModule,
+} from '@creit.tech/stellar-wallets-kit/modules/walletconnect.module'
+import {
+  xBullModule,
+  FreighterModule,
+  AlbedoModule,
+} from '@creit.tech/stellar-wallets-kit'
+
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -13,6 +28,7 @@ import {
   CardHeader,
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Button } from '@/components/ui/button'
 
 interface TokenInfo {
   address: string
@@ -22,6 +38,12 @@ interface TokenInfo {
 
 interface Balances {
   [symbol: string]: number
+}
+
+interface StellarBalance {
+  asset_type: string
+  asset_code?: string
+  balance: string
 }
 
 const TOKENS: Record<string, TokenInfo> = {
@@ -66,143 +88,147 @@ const ERC20_ABI = [
   },
 ]
 
-interface CardSectionProps {
-  token: string
-  tokenShort: string
-  price: number
+let stellarWalletKit: StellarWalletsKit | null = null
+
+function initStellarKit(): StellarWalletsKit {
+  if (stellarWalletKit) return stellarWalletKit
+  stellarWalletKit = new StellarWalletsKit({
+    network: WalletNetwork.TESTNET,
+    selectedWalletId: XBULL_ID,
+    modules: [
+      new xBullModule(),
+      new FreighterModule(),
+      new AlbedoModule(),
+      new WalletConnectModule({
+        url: 'http://localhost:3000',
+        projectId: 'your-walletconnect-project-id',
+        method: WalletConnectAllowedMethods.SIGN,
+        description: 'Connect your Stellar wallet to interact with our dApp',
+        name: 'Your DApp Name',
+        icons: ['https://yoursite.com/logo.png'],
+        network: WalletNetwork.TESTNET,
+      }),
+    ],
+  })
+  return stellarWalletKit
 }
 
-const CardSection: React.FC<CardSectionProps> = ({ token, tokenShort, price }) => {
-  return (
-    <Card className="p-2">
-      <CardHeader>
-        <CardTitle>
-          {price} {tokenShort}
-        </CardTitle>
-        <CardAction className="flex items-center gap-2 mt-2">
-          ${price} <Checkbox className="!bg-accent" />
-        </CardAction>
-        <CardDescription>{token}</CardDescription>
-      </CardHeader>
-    </Card>
-  )
-}
+const CardSection: React.FC<{ token: string; tokenShort: string; price: number }> = ({
+  token,
+  tokenShort,
+  price,
+}) => (
+  <Card className="p-2">
+    <CardHeader>
+      <CardTitle>
+        {price} {tokenShort}
+      </CardTitle>
+      <CardAction className="flex items-center gap-2 mt-2">
+        ${price} <Checkbox className="!bg-accent" />
+      </CardAction>
+      <CardDescription>{token}</CardDescription>
+    </CardHeader>
+  </Card>
+)
 
-const ScrollComponent: React.FC = () => {
-  const [balances, setBalances] = useState<Balances>({})
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export default function WalletBalances() {
+  const [starknetBalances, setStarknetBalances] = useState<Balances>({})
+  const [stellarBalances, setStellarBalances] = useState<StellarBalance[]>([])
+  const [starknetAddress, setStarknetAddress] = useState<string | null>(null)
+  const [stellarAddress, setStellarAddress] = useState<string | null>(null)
 
-  useEffect(() => {
-    // Use mainnet provider instead of goerli
-    const provider = new RpcProvider({ 
-      nodeUrl: 'https://starknet-mainnet.public.blastapi.io' 
+  const fetchStarknetBalances = async () => {
+    const provider = new RpcProvider({ nodeUrl: 'https://starknet-mainnet.public.blastapi.io' })
+    const { wallet } = await connectStarknet({
+      webWalletUrl: 'https://web.argent.xyz',
+      dappName: 'Your DApp',
+      modalMode: 'canAsk',
     })
-    const connectAndFetch = async () => {
-      try {
-        setIsLoading(true)
-        setError(null)
-        
-        const { wallet } = await connect({
-          webWalletUrl: 'https://web.argent.xyz',
-          dappName: 'Your DApp',
-          modalMode: 'canAsk',
-          modalTheme: 'light',
-        })
+    interface WalletLike {
+  selectedAddress?: string
+  selectedAccount?: { address: string }
+  account?: { address: string }
+}
 
-        // More robust address extraction
-        let userAddress: string | undefined
-        
-        if (wallet && typeof wallet === 'object') {
-          const walletObj = wallet as {
-            selectedAddress?: string
-            account?: { address: string }
-            selectedAccount?: { address: string }
-          }
-          userAddress = walletObj.selectedAddress || 
-                       walletObj.account?.address ||
-                       walletObj.selectedAccount?.address
-        }
+const w = wallet as WalletLike
+const address = w.selectedAddress || w.selectedAccount?.address || w.account?.address
 
-        if (!userAddress) {
-          throw new Error('No wallet address found')
-        }
+    setStarknetAddress(address  ?? null)
+    if (!address) return
 
-        console.log('Connected wallet address:', userAddress)
-
-        const balancesObj: Balances = {}
-        const tokenEntries = Object.entries(TOKENS) as [string, TokenInfo][]
-
-        // Process tokens sequentially to avoid rate limiting
-        for (const [, token] of tokenEntries) {
-          try {
-            const contract = new Contract(ERC20_ABI, token.address, provider)
-            const result = await contract.balanceOf(userAddress)
-            
-            // Handle both possible response formats
-            const balanceValue = result.balance || result
-            const balance = uint256.uint256ToBN(balanceValue)
-            const formattedBalance = Number(balance.toString()) / 10 ** token.decimals
-            
-            balancesObj[token.symbol] = formattedBalance
-            console.log(`${token.symbol} balance:`, formattedBalance)
-            
-            // Small delay to prevent rate limiting
-            await new Promise(resolve => setTimeout(resolve, 100))
-          } catch (tokenError) {
-            console.error(`Error fetching ${token.symbol} balance:`, tokenError)
-            balancesObj[token.symbol] = 0
-          }
-        }
-
-        setBalances(balancesObj)
-      } catch (err) {
-        console.error('Error connecting wallet or fetching balances:', err)
-        setError(err instanceof Error ? err.message : 'Unknown error occurred')
-      } finally {
-        setIsLoading(false)
-      }
+    const balancesObj: Balances = {}
+    for (const [, token] of Object.entries(TOKENS)) {
+      const contract = new Contract(ERC20_ABI, token.address, provider)
+      const result = await contract.balanceOf(address)
+      const balance = uint256.uint256ToBN(result.balance)
+      balancesObj[token.symbol] = Number(balance.toString()) / 10 ** token.decimals
     }
-
-    connectAndFetch()
-  }, [])
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p>Loading balances...</p>
-      </div>
-    )
+    setStarknetBalances(balancesObj)
   }
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-red-500">Error: {error}</p>
-      </div>
-    )
+  const fetchStellarBalances = async () => {
+    const kit = initStellarKit()
+    return new Promise<void>((resolve, reject) => {
+      kit.openModal({
+        onWalletSelected: async (wallet) => {
+          try {
+            kit.setWallet(wallet.id)
+            const { address } = await kit.getAddress()
+            setStellarAddress(address)
+            const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`)
+            const data = await res.json()
+            setStellarBalances(data.balances)
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        },
+        onClosed: () => reject(new Error('Modal closed')),
+      })
+    })
   }
 
   return (
-    <ScrollArea className="h-64 rounded-md border w-full">
-      <div className="p-4">
-        {Object.entries(balances).length === 0 ? (
-          <p className="text-center text-gray-500">No balances to display</p>
-        ) : (
-          Object.entries(balances).map(([symbol, balance], index, array) => (
-            <React.Fragment key={symbol}>
-              <CardSection
-                token={symbol}
-                tokenShort={symbol}
-                price={Number(balance.toFixed(4))}
-              />
-              {index !== array.length - 1 && <Separator className="my-2" />}
-            </React.Fragment>
-          ))
-        )}
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-4">
+        <Button onClick={fetchStarknetBalances}>Connect Starknet Wallet</Button>
+        <Button onClick={fetchStellarBalances}>Connect Stellar Wallet</Button>
       </div>
-    </ScrollArea>
+
+      {starknetAddress || stellarAddress ? (
+        <ScrollArea className="h-[400px] rounded-md border w-full p-4">
+          {starknetAddress && (
+            <>
+              <h2 className="text-xl font-bold">Starknet Balances</h2>
+              {Object.entries(starknetBalances).map(([symbol, amount]) => (
+                <CardSection
+                  key={symbol}
+                  token={symbol}
+                  tokenShort={symbol}
+                  price={Number(amount.toFixed(4))}
+                />
+              ))}
+              <Separator className="my-4" />
+            </>
+          )}
+
+          {stellarAddress && (
+            <>
+              <h2 className="text-xl font-bold">Stellar Balances</h2>
+              {stellarBalances.map((bal, idx) => (
+                <CardSection
+                  key={idx}
+                  token={bal.asset_type === 'native' ? 'XLM' : bal.asset_code || 'Unknown'}
+                  tokenShort={bal.asset_type === 'native' ? 'XLM' : bal.asset_code || '??'}
+                  price={Number(parseFloat(bal.balance).toFixed(4))}
+                />
+              ))}
+            </>
+          )}
+        </ScrollArea>
+      ) : (
+        <p className="text-center text-gray-400">Connect wallet to see your balances</p>
+      )}
+    </div>
   )
 }
-
-export default ScrollComponent
