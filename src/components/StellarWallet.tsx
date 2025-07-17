@@ -19,7 +19,7 @@ import {
 } from '@creit.tech/stellar-wallets-kit';
 
 import { Button } from './ui/button';
-// import { BorderBeam } from './magicui/border-beam';
+import { BorderBeam } from './magicui/border-beam';
 
 let stellarWalletKit: StellarWalletsKit | null = null;
 
@@ -116,7 +116,7 @@ export default function StellarWalletButton() {
         title={walletAddress || 'Connect your Stellar wallet'}
             >
               {isConnecting ? 'Connecting...' : (walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : 'Connect')}
-              {/* <BorderBeam
+              <BorderBeam
                 size={40}
                 initialOffset={20}
                 className="from-transparent via-yellow-500 to-transparent"
@@ -125,7 +125,7 @@ export default function StellarWalletButton() {
                   stiffness: 60,
                   damping: 20,
                 }}
-              /> */}
+              />
             </Button>
 
       {error && <div className="text-red-500 text-sm text-center">{error}</div>}
