@@ -11,6 +11,7 @@ import {
 
 import { BorderBeam } from '@/components/magicui/border-beam'
 import StellarWalletButton from './StellarWallet'
+import StarknetWalletButton from './StarknetWallet'
 
 
 export default function CollectDustComponent() {
@@ -38,23 +39,7 @@ export default function CollectDustComponent() {
             
         </div>
         <div>
-            <Button
-              className="relative overflow-hidden"
-              size="lg"
-              variant="outline"
-            >
-              Connect
-              <BorderBeam
-                size={40}
-                initialOffset={20}
-                className="from-transparent via-yellow-500 to-transparent"
-                transition={{
-                  type: 'spring',
-                  stiffness: 60,
-                  damping: 20,
-                }}
-              />
-            </Button>
+            <StarknetWalletButton/>
         </div>
       </CardContent>
 

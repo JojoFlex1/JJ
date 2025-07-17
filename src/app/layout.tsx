@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import HeaderSection from '@/components/Header'
+import StarknetProviderWrapper from './providers/StarknetProvider'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -102,8 +103,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <HeaderSection />
-          {children}
+          <StarknetProviderWrapper>
+            <HeaderSection />
+            {children}
+          </StarknetProviderWrapper>
         </ThemeProvider>
       </body>
     </html>
