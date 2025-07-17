@@ -48,7 +48,7 @@ export default function CollectDustComponent() {
       <Card className="relative overflow-hidden p-2 mb-2">
       <CardContent className=' flex items-center justify-between '>
         <div>
-            <CardTitle>Ethereum Wallet</CardTitle>
+            <CardTitle>Ethereum Wallet <span className=' text-destructive font-thin text-sm'>Coming soon</span></CardTitle>
             
         </div>
         <div>
