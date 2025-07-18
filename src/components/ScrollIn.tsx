@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { connect } from 'starknetkit'
+import { RpcProvider, uint256 } from 'starknet'
 import {
   StellarWalletsKit,
   WalletNetwork,
@@ -27,8 +28,6 @@ import {
   CardHeader,
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Button } from '@/components/ui/button'
-import { RpcProvider, uint256 } from 'starknet'
 
 interface TokenInfo {
   address: string
@@ -123,92 +122,90 @@ const CardSection: React.FC<{ token: string; tokenShort: string; price: number }
 )
 
 export default function WalletBalances() {
+  const [starknetAddress, setStarknetAddress] = useState<string | null>(null)
   const [starknetBalances, setStarknetBalances] = useState<Balances>({})
   const [stellarBalances, setStellarBalances] = useState<StellarBalance[]>([])
-  const [starknetAddress, setStarknetAddress] = useState<string | null>(null)
   const [stellarAddress, setStellarAddress] = useState<string | null>(null)
 
-  const provider = new RpcProvider({
-  nodeUrl: 'https://starknet-sepolia.public.blastapi.io',
-})
-
-  const fetchStarknetBalances = async () => {
-  try {
-    const { wallet } = await connect({
-      dappName: 'Balance Checker',
-      modalMode: 'canAsk',
-      modalTheme: 'light',
+  useEffect(() => {
+    const provider = new RpcProvider({
+      nodeUrl: 'https://starknet-sepolia.public.blastapi.io',
     })
 
-    interface SafeWallet {
-      isConnected?: boolean
-      selectedAddress?: string
+    const getAllStarknetBalances = async (walletAddress: string) => {
+      try {
+        const balances: Balances = {}
+        for (const [, token] of Object.entries(TOKENS)) {
+          const result = await provider.callContract({
+            contractAddress: token.address,
+            entrypoint: 'balanceOf',
+            calldata: [walletAddress],
+          })
+
+          if (result.length >= 2) {
+            const balance = uint256.uint256ToBN({
+              low: result[0],
+              high: result[1],
+            })
+            balances[token.symbol] =
+              Number(balance.toString()) / Math.pow(10, token.decimals)
+          } else {
+            balances[token.symbol] = 0
+          }
+        }
+        setStarknetBalances(balances)
+      } catch (err) {
+        console.error('Failed to fetch Starknet balances:', err)
+      }
     }
 
-    const safeWallet = wallet as SafeWallet
-
-    if (safeWallet?.isConnected) {
-      const address = safeWallet.selectedAddress ?? null
-      setStarknetAddress(address)
-      if (!address) return
-
-      const balancesObj: Balances = {}
-      for (const [, token] of Object.entries(TOKENS)) {
-        const result = await provider.callContract({
-          contractAddress: token.address,
-          entrypoint: 'balanceOf',
-          calldata: [address],
+    const detectWallet = async () => {
+      try {
+        const { wallet } = await connect({
+          dappName: 'Balance Checker',
+          modalMode: 'neverAsk',
+          modalTheme: 'light',
         })
 
-        if (result.length >= 2) {
-          const balance = uint256.uint256ToBN({
-            low: result[0],
-            high: result[1],
-          })
-          balancesObj[token.symbol] =
-            Number(balance.toString()) / Math.pow(10, token.decimals)
-        } else {
-          balancesObj[token.symbol] = 0
+        interface SafeWallet {
+          isConnected?: boolean
+          selectedAddress?: string
         }
+
+        const safeWallet = wallet as SafeWallet
+
+        if (safeWallet?.isConnected && safeWallet.selectedAddress) {
+          const address = safeWallet.selectedAddress
+          setStarknetAddress(address)
+          await getAllStarknetBalances(address)
+        }
+      } catch (err) {
+        console.error('Failed to auto-connect Starknet wallet:', err)
       }
-
-      setStarknetBalances(balancesObj)
     }
-  } catch (err) {
-    console.error('Failed to fetch Starknet balances:', err)
-  }
-}
 
+    detectWallet()
+  }, [])
 
-  const fetchStellarBalances = async () => {
+  useEffect(() => {
     const kit = initStellarKit()
-    return new Promise<void>((resolve, reject) => {
-      kit.openModal({
-        onWalletSelected: async (wallet) => {
-          try {
-            kit.setWallet(wallet.id)
-            const { address } = await kit.getAddress()
-            setStellarAddress(address)
-            const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`)
-            const data = await res.json()
-            setStellarBalances(data.balances)
-            resolve()
-          } catch (err) {
-            reject(err)
-          }
-        },
-        onClosed: () => reject(new Error('Modal closed')),
+    kit
+      .getAddress()
+      .then(({ address }) => {
+        setStellarAddress(address)
+        return fetch(`https://horizon-testnet.stellar.org/accounts/${address}`)
       })
-    })
-  }
+      .then((res) => res.json())
+      .then((data) => {
+        setStellarBalances(data.balances || [])
+      })
+      .catch((err) => {
+        console.error('Failed to fetch Stellar balances:', err)
+      })
+  }, [])
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-4">
-        <Button onClick={fetchStarknetBalances}>Connect Starknet Wallet</Button>
-        <Button onClick={fetchStellarBalances}>Connect Stellar Wallet</Button>
-      </div>
-
       {starknetAddress || stellarAddress ? (
         <ScrollArea className="h-[400px] rounded-md border w-full p-4">
           {starknetAddress && (
@@ -241,7 +238,9 @@ export default function WalletBalances() {
           )}
         </ScrollArea>
       ) : (
-        <p className="text-center text-gray-400">Connect wallet to see your balances</p>
+        <p className="text-center text-gray-400">
+          Connect wallet to see your balances
+        </p>
       )}
     </div>
   )
