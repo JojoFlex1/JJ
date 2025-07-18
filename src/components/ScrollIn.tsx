@@ -191,7 +191,7 @@ const address = w.selectedAddress || w.selectedAccount?.address || w.account?.ad
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-4">
-        <Button className=' bg-card text-foreground' onClick={fetchStarknetBalances}>Connect Starknet Wallet <span className=' text-destructive'>Coming soon</span></Button>
+        <Button className=' bg-card text-foreground' onClick={fetchStarknetBalances}>Connect Starknet Wallet</Button>
         <Button className=' bg-card text-foreground' onClick={fetchStellarBalances}>Connect Stellar Wallet</Button>
       </div>
 
