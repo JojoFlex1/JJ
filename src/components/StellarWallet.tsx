@@ -73,22 +73,22 @@ async function connectWallet(): Promise<{ address: string; walletId: string }> {
   });
 }
 
-async function getWalletBalances(address: string): Promise<{ asset_type: string; asset_code?: string; balance: string }[]> {
-  try {
-    const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`);
-    const data = await res.json();
-    return data.balances;
-  } catch (error) {
-    console.error('Failed to fetch balances:', error);
-    return [];
-  }
-}
+// async function getWalletBalances(address: string): Promise<{ asset_type: string; asset_code?: string; balance: string }[]> {
+//   try {
+//     const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`);
+//     const data = await res.json();
+//     return data.balances;
+//   } catch (error) {
+//     console.error('Failed to fetch balances:', error);
+//     return [];
+//   }
+// }
 
 export default function StellarWalletButton() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [balances, setBalances] = useState<{ asset_type: string; asset_code?: string; balance: string }[]>([]);
+  // const [balances, setBalances] = useState<{ asset_type: string; asset_code?: string; balance: string }[]>([]);
 
   const handleClick = async () => {
     setIsConnecting(true);
@@ -97,8 +97,8 @@ export default function StellarWalletButton() {
       const { address } = await connectWallet();
       setWalletAddress(address);
 
-      const fetchedBalances = await getWalletBalances(address);
-      setBalances(fetchedBalances);
+      // const fetchedBalances = await getWalletBalances(address);
+      // setBalances(fetchedBalances);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to connect wallet');
     } finally {
@@ -130,7 +130,7 @@ export default function StellarWalletButton() {
 
       {error && <div className="text-red-500 text-sm text-center">{error}</div>}
 
-      {walletAddress && balances.length > 0 && (
+      {/* {walletAddress && balances.length > 0 && (
         <div className="mt-2 text-sm text-gray-200">
           <strong>Balances:</strong>
           <ul>
@@ -139,7 +139,7 @@ export default function StellarWalletButton() {
             ))}
           </ul>
         </div>
-      )}
+      )} */}
     </div>
   );
 }
