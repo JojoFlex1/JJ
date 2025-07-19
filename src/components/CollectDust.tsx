@@ -1,18 +1,19 @@
 'use client'
 import { Button } from './ui/button'
 import { RefreshCcw } from 'lucide-react'
-import ProcessingButtonCardComponent from './ProcessingButtonCard'
+// import ProcessingButtonCardComponent from './ProcessingButtonCard'
 import {
   Card,
   CardContent,
   CardTitle,
+  CardDescription
 } from '@/components/ui/card'
 
 import { BorderBeam } from '@/components/magicui/border-beam'
 import StellarWalletButton from './StellarWallet'
 import StarknetWalletButton from './StarknetWallet'
 import ScrollComponent from './ScrollIn'
-
+import { ArrowRight } from 'lucide-react'
 
 export default function CollectDustComponent() {
   return (
@@ -83,7 +84,37 @@ export default function CollectDustComponent() {
       </div>
         <div className=' mb-6 gap-2'>
               <ScrollComponent />
-              <ProcessingButtonCardComponent/>
+              <Card className="relative overflow-hidden p-2 mt-2">
+      <CardContent className=' flex items-center justify-between '>
+        <div>
+            <CardDescription>
+              Total Selected Dust Value
+                  </CardDescription>
+            <CardTitle>$0.00</CardTitle>
+                  
+        </div>
+        <div>
+            <Button
+              className="relative overflow-hidden"
+              size="lg"
+              variant="outline"
+            >
+              Continue to Processing <ArrowRight/>
+              <BorderBeam
+                size={40}
+                initialOffset={20}
+                className="from-transparent via-yellow-500 to-transparent"
+                transition={{
+                  type: 'tween',
+                  stiffness: 60,
+                  damping: 20,
+                }}
+              />
+            </Button>
+        </div>
+      </CardContent>
+
+    </Card>
         </div>
     </div>
   )
