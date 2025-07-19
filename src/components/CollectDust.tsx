@@ -13,8 +13,8 @@ import { BorderBeam } from '@/components/magicui/border-beam'
 import StellarWalletButton from './StellarWallet'
 import StarknetWalletButton from './StarknetWallet'
 import ScrollComponent from './ScrollIn'
-import { ArrowRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import ProcessAlertButton from './ProcessAlert'
 
 export default function CollectDustComponent() {
   const [selectedTotal, setSelectedTotal] = useState(0)
@@ -113,19 +113,7 @@ export default function CollectDustComponent() {
               <CardTitle>${selectedTotal.toFixed(2)}</CardTitle>
             </div>
             <div>
-              <Button className="relative overflow-hidden" size="lg" variant="outline">
-                Continue to Processing <ArrowRight />
-                <BorderBeam
-                  size={40}
-                  initialOffset={20}
-                  className="from-transparent via-yellow-500 to-transparent"
-                  transition={{
-                    type: 'tween',
-                    stiffness: 60,
-                    damping: 20,
-                  }}
-                />
-              </Button>
+              <ProcessAlertButton/>
             </div>
           </CardContent>
         </Card>
