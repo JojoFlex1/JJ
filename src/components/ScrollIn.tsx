@@ -1,6 +1,6 @@
 'use client'
 
-import React, {  useState } from 'react'
+import React, { useState } from 'react'
 import { connect as connectStarknet } from 'starknetkit'
 import { RpcProvider, Contract, uint256 } from 'starknet'
 import {
@@ -24,11 +24,13 @@ import {
   Card,
   CardAction,
   CardDescription,
+  CardContent,
   CardTitle,
   CardHeader,
 } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
+import ProcessAlertButton from './ProcessAlert'
 
 interface TokenInfo {
   address: string
@@ -45,6 +47,8 @@ interface StellarBalance {
   asset_code?: string
   balance: string
 }
+
+
 
 const TOKENS: Record<string, TokenInfo> = {
   ETH: {
@@ -113,18 +117,25 @@ function initStellarKit(): StellarWalletsKit {
   return stellarWalletKit
 }
 
-const CardSection: React.FC<{ token: string; tokenShort: string; price: number }> = ({
-  token,
-  tokenShort,
-  price,
-}) => (
+const CardSection: React.FC<{
+  token: string
+  tokenShort: string
+  price: number
+  isSelected: boolean
+  onSelectionChange: (selected: boolean) => void
+}> = ({ token, tokenShort, price, isSelected, onSelectionChange }) => (
   <Card className="p-2">
     <CardHeader>
       <CardTitle>
         {price} {tokenShort}
       </CardTitle>
       <CardAction className="flex items-center gap-2 mt-2">
-        ${price} <Checkbox className="!bg-accent" />
+        ${price}{' '}
+        <Checkbox
+          className="!bg-accent"
+          checked={isSelected}
+          onCheckedChange={(checked) => onSelectionChange(checked === true)}
+        />
       </CardAction>
       <CardDescription>{token}</CardDescription>
     </CardHeader>
@@ -136,24 +147,28 @@ export default function WalletBalances() {
   const [stellarBalances, setStellarBalances] = useState<StellarBalance[]>([])
   const [starknetAddress, setStarknetAddress] = useState<string | null>(null)
   const [stellarAddress, setStellarAddress] = useState<string | null>(null)
+  const [selectedTokens, setSelectedTokens] = useState<Set<string>>(new Set())
 
   const fetchStarknetBalances = async () => {
-    const provider = new RpcProvider({ nodeUrl: 'https://starknet-sepolia.public.blastapi.io'})
+    const provider = new RpcProvider({
+      nodeUrl: 'https://starknet-sepolia.public.blastapi.io',
+    })
     const { wallet } = await connectStarknet({
       webWalletUrl: 'https://web.hydrogen.argent47.net',
       dappName: 'Your DApp',
       modalMode: 'canAsk',
     })
     interface WalletLike {
-  selectedAddress?: string
-  selectedAccount?: { address: string }
-  account?: { address: string }
-}
+      selectedAddress?: string
+      selectedAccount?: { address: string }
+      account?: { address: string }
+    }
 
-const w = wallet as WalletLike
-const address = w.selectedAddress || w.selectedAccount?.address || w.account?.address
+    const w = wallet as WalletLike
+    const address =
+      w.selectedAddress || w.selectedAccount?.address || w.account?.address
 
-    setStarknetAddress(address  ?? null)
+    setStarknetAddress(address ?? null)
     if (!address) return
 
     const balancesObj: Balances = {}
@@ -161,7 +176,8 @@ const address = w.selectedAddress || w.selectedAccount?.address || w.account?.ad
       const contract = new Contract(ERC20_ABI, token.address, provider)
       const result = await contract.balanceOf(address)
       const balance = uint256.uint256ToBN(result.balance)
-      balancesObj[token.symbol] = Number(balance.toString()) / 10 ** token.decimals
+      balancesObj[token.symbol] =
+        Number(balance.toString()) / 10 ** token.decimals
     }
     setStarknetBalances(balancesObj)
   }
@@ -175,7 +191,9 @@ const address = w.selectedAddress || w.selectedAccount?.address || w.account?.ad
             kit.setWallet(wallet.id)
             const { address } = await kit.getAddress()
             setStellarAddress(address)
-            const res = await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`)
+            const res = await fetch(
+              `https://horizon-testnet.stellar.org/accounts/${address}`
+            )
             const data = await res.json()
             setStellarBalances(data.balances)
             resolve()
@@ -188,11 +206,56 @@ const address = w.selectedAddress || w.selectedAccount?.address || w.account?.ad
     })
   }
 
+  const handleTokenSelection = (tokenId: string, selected: boolean) => {
+    setSelectedTokens((prev) => {
+      const newSet = new Set(prev)
+      if (selected) {
+        newSet.add(tokenId)
+      } else {
+        newSet.delete(tokenId)
+      }
+      return newSet
+    })
+  }
+
+  const calculateTotalSelectedValue = (): number => {
+    let total = 0
+
+    // Calculate Starknet token values
+    Object.entries(starknetBalances).forEach(([symbol, amount]) => {
+      const tokenId = `starknet-${symbol}`
+      if (selectedTokens.has(tokenId)) {
+        // For now, using the amount as the dollar value
+        // In a real app, you'd multiply by actual token price
+        total += amount
+      }
+    })
+
+    // Calculate Stellar token values
+    stellarBalances.forEach((bal, idx) => {
+      const tokenId = `stellar-${idx}`
+      if (selectedTokens.has(tokenId)) {
+        // For now, using the balance as the dollar value
+        // In a real app, you'd multiply by actual token price
+        total += parseFloat(bal.balance)
+      }
+    })
+
+    return total
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-4">
-        <Button className=' bg-card text-foreground' onClick={fetchStarknetBalances}>Connect Starknet Wallet</Button>
-        <Button className=' bg-card text-foreground' onClick={fetchStellarBalances}>Connect Stellar Wallet</Button>
+        <Button
+          className=" bg-card text-foreground"
+          onClick={fetchStarknetBalances}
+        >
+          Connect Starknet Wallet
+        </Button>
+        <Button className=" bg-card text-foreground" onClick={fetchStellarBalances}>
+          Connect Stellar Wallet
+        </Button>
       </div>
 
       {starknetAddress || stellarAddress ? (
@@ -200,14 +263,21 @@ const address = w.selectedAddress || w.selectedAccount?.address || w.account?.ad
           {starknetAddress && (
             <>
               <h2 className="text-xl font-bold">Starknet Balances</h2>
-              {Object.entries(starknetBalances).map(([symbol, amount]) => (
-                <CardSection
-                  key={symbol}
-                  token={symbol}
-                  tokenShort={symbol}
-                  price={Number(amount.toFixed(4))}
-                />
-              ))}
+              {Object.entries(starknetBalances).map(([symbol, amount]) => {
+                const tokenId = `starknet-${symbol}`
+                return (
+                  <CardSection
+                    key={symbol}
+                    token={symbol}
+                    tokenShort={symbol}
+                    price={Number(amount.toFixed(4))}
+                    isSelected={selectedTokens.has(tokenId)}
+                    onSelectionChange={(selected) =>
+                      handleTokenSelection(tokenId, selected)
+                    }
+                  />
+                )
+              })}
               <Separator className="my-4" />
             </>
           )}
@@ -215,20 +285,43 @@ const address = w.selectedAddress || w.selectedAccount?.address || w.account?.ad
           {stellarAddress && (
             <>
               <h2 className="text-xl font-bold">Stellar Balances</h2>
-              {stellarBalances.map((bal, idx) => (
-                <CardSection
-                  key={idx}
-                  token={bal.asset_type === 'native' ? 'XLM' : bal.asset_code || 'Unknown'}
-                  tokenShort={bal.asset_type === 'native' ? 'XLM' : bal.asset_code || '??'}
-                  price={Number(parseFloat(bal.balance).toFixed(4))}
-                />
-              ))}
+              {stellarBalances.map((bal, idx) => {
+                const tokenId = `stellar-${idx}`
+                const symbol = bal.asset_type === 'native' ? 'XLM' : bal.asset_code || 'Unknown'
+                const shortSymbol = bal.asset_type === 'native' ? 'XLM' : bal.asset_code || '??'
+                
+                return (
+                  <CardSection
+                    key={idx}
+                    token={symbol}
+                    tokenShort={shortSymbol}
+                    price={Number(parseFloat(bal.balance).toFixed(4))}
+                    isSelected={selectedTokens.has(tokenId)}
+                    onSelectionChange={(selected) =>
+                      handleTokenSelection(tokenId, selected)
+                    }
+                  />
+                )
+              })}
             </>
           )}
         </ScrollArea>
       ) : (
-        <p className="text-center text-gray-400">Connect wallet to see your balances</p>
+        <p className="text-center text-gray-400">
+          Connect wallet to see your balances
+        </p>
       )}
+      <Card className="relative overflow-hidden p-2 mt-2">
+        <CardContent className=" flex items-center justify-between ">
+          <div>
+            <CardDescription>Total Selected Dust Value</CardDescription>
+            <CardTitle>${calculateTotalSelectedValue().toFixed(2)}</CardTitle>
+          </div>
+          <div>
+            <ProcessAlertButton />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
