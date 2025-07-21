@@ -138,9 +138,9 @@ export default function WalletBalances() {
   const [stellarAddress, setStellarAddress] = useState<string | null>(null)
 
   const fetchStarknetBalances = async () => {
-    const provider = new RpcProvider({ nodeUrl: 'https://starknet-mainnet.public.blastapi.io' })
+    const provider = new RpcProvider({ nodeUrl: 'https://starknet-sepolia.public.blastapi.io'})
     const { wallet } = await connectStarknet({
-      webWalletUrl: 'https://web.argent.xyz',
+      webWalletUrl: 'https://web.hydrogen.argent47.net',
       dappName: 'Your DApp',
       modalMode: 'canAsk',
     })
