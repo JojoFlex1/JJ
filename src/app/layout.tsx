@@ -3,7 +3,9 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import HeaderSection from '@/components/Header'
-import StarknetProviderWrapper from './providers/StarknetProvider'
+// import StarknetProviderWrapper from './providers/StarknetProvider'
+import { StarknetConfig, publicProvider } from '@starknet-react/core'
+import { sepolia } from '@starknet-react/chains'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -68,8 +70,7 @@ export const metadata: Metadata = {
 
   twitter: {
     card: 'summary_large_image',
-    title:
-      'Dust Accelerator - Batch dust and send via Stellar.',
+    title: 'Dust Accelerator - Batch dust and send via Stellar.',
     description:
       'A platform that allows you to collect small, unusable balances from different wallets, batch process them to reduce gas fees, and transfer to Stellar via Soroban.',
     images: ['/images/dustLogo.png'],
@@ -103,10 +104,14 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <StarknetProviderWrapper>
+          <StarknetConfig
+            chains={[sepolia]}
+            provider={publicProvider()}
+            autoConnect
+          >
             <HeaderSection />
             {children}
-          </StarknetProviderWrapper>
+          </StarknetConfig>
         </ThemeProvider>
       </body>
     </html>
