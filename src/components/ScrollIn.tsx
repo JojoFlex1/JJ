@@ -670,14 +670,14 @@ export default function WalletBalances() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-4">
+      <div className="flex justify-around max-w-full gap-4">
         <Button
-          className=" bg-card text-foreground"
+          className=" w-auto bg-card text-foreground"
           onClick={fetchStarknetBalances}
         >
           Connect Starknet Wallet
         </Button>
-        <Button className=" bg-card text-foreground" onClick={fetchStellarBalances}>
+        <Button className=" w-auto bg-card text-foreground" onClick={fetchStellarBalances}>
           Connect Stellar Wallet
         </Button>
       </div>
