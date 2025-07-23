@@ -670,7 +670,7 @@ export default function WalletBalances() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-around max-w-full gap-4">
+      <div className="flex flex-wrap max-w-full gap-4">
         <Button
           className=" w-auto bg-card text-foreground"
           onClick={fetchStarknetBalances}
