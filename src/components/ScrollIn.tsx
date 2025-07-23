@@ -60,12 +60,12 @@ interface DustBalance {
   network: 'starknet' | 'stellar'
 }
 
-interface SwapChain {
-  pool_address: string
-  token_a: string
-  token_b: string
-  fee_bps: number
-}
+// interface SwapChain {
+//   pool_address: string
+//   token_a: string
+//   token_b: string
+//   fee_bps: number
+// }
 
 interface BatchGroup {
   assets: DustBalance[]
@@ -105,6 +105,12 @@ interface WalletLike {
 
 interface StarknetContract {
   balanceOf: (address: string) => Promise<{ balance: unknown }>
+}
+
+// Stellar Contract Interface
+interface StellarContract {
+  address: string
+  network: WalletNetwork
 }
 
 const TOKENS: Record<string, TokenInfo> = {
@@ -149,7 +155,8 @@ const ERC20_ABI = [
   },
 ]
 
-// const DUST_AGGREGATOR_CONTRACT = 'CAENNM2HHYAKX4V3LSQM4BEPHZ6DUSPSGPQOW6QXDY5FOHB2HMB6TMNX'
+// Fixed contract address - properly defined
+const DUST_AGGREGATOR_CONTRACT = 'CAENNM2HHYAKX4V3LSQM4BEPHZ6DUSPSGPQOW6QXDY5FOHB2HMB6TMNX'
 
 const ProcessingStep = {
   IDLE: 0,
@@ -167,38 +174,60 @@ const stepLabels: Record<ProcessingStepType, string> = {
   [ProcessingStep.COLLECTING_DUST]: 'Collecting dust from connected wallets',
   [ProcessingStep.OPTIMIZING_BATCH]: 'Optimizing batch transactions',
   [ProcessingStep.PROCESSING_BATCH]: 'Processing batch transactions',
-  [ProcessingStep.TRANSFERRING]: 'Transferring to Stellar via Soroban',
+  [ProcessingStep.TRANSFERRING]: 'Transferring via Stellar contract',
   [ProcessingStep.COMPLETE]: 'Complete',
 }
 
-
 let stellarWalletKit: StellarWalletsKit | null = null
+
+// Get a valid WalletConnect project ID from https://cloud.walletconnect.com
+const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '2f05a7cde26b5eebb89f0a82b4b95e25'
 
 function initStellarKit(): StellarWalletsKit {
   if (stellarWalletKit) return stellarWalletKit
+  
+  const modules = [
+    new xBullModule(),
+    new FreighterModule(),
+    new AlbedoModule(),
+  ]
+
+  // Only add WalletConnect if we have a valid project ID
+  if (WALLETCONNECT_PROJECT_ID && WALLETCONNECT_PROJECT_ID !== 'your-walletconnect-project-id') {
+    modules.push(new WalletConnectModule({
+      url: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+      projectId: WALLETCONNECT_PROJECT_ID,
+      method: WalletConnectAllowedMethods.SIGN,
+      description: 'Connect your Stellar wallet to interact with our dApp',
+      name: 'Dust Aggregator',
+      icons: ['https://stellar.org/favicon.ico'],
+      network: WalletNetwork.TESTNET,
+    }))
+  }
+
   stellarWalletKit = new StellarWalletsKit({
     network: WalletNetwork.TESTNET,
     selectedWalletId: XBULL_ID,
-    modules: [
-      new xBullModule(),
-      new FreighterModule(),
-      new AlbedoModule(),
-      new WalletConnectModule({
-        url: 'http://localhost:3000',
-        projectId: 'your-walletconnect-project-id',
-        method: WalletConnectAllowedMethods.SIGN,
-        description: 'Connect your Stellar wallet to interact with our dApp',
-        name: 'Your DApp Name',
-        icons: ['https://yoursite.com/logo.png'],
-        network: WalletNetwork.TESTNET,
-      }),
-    ],
+    modules,
   })
   return stellarWalletKit
 }
 
-// Core dust aggregation logic
-const useDustAggregator = (contract: StarknetContract | null, userAddress: string | null, dustBalances: DustBalance[]) => {
+// Helper function to create Stellar contract instance
+const createStellarContract = (address: string): StellarContract => {
+  return {
+    address,
+    network: WalletNetwork.TESTNET
+  }
+}
+
+// Core dust aggregation logic - Fixed version
+const useDustAggregator = (
+  starknetContract: StarknetContract | null, 
+  stellarContract: StellarContract | null,
+  userAddress: string | null, 
+  dustBalances: DustBalance[]
+) => {
   const [currentStep, setCurrentStep] = useState<ProcessingStepType>(ProcessingStep.IDLE)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -268,8 +297,13 @@ const useDustAggregator = (contract: StarknetContract | null, userAddress: strin
 
   // Step 3: Process batch transactions through smart contract
   const processBatch = useCallback(async (batchGroups: BatchGroup[]): Promise<BatchResult[]> => {
-    if (!contract || !userAddress) {
-      throw new Error('Contract or user address not available')
+    // Check if we have either contract type available
+    if (!starknetContract && !stellarContract) {
+      throw new Error('No contract instance available')
+    }
+
+    if (!userAddress) {
+      throw new Error('User address not available')
     }
 
     const results: BatchResult[] = []
@@ -281,33 +315,44 @@ const useDustAggregator = (contract: StarknetContract | null, userAddress: strin
           (prev.usdValue || 0) > (current.usdValue || 0) ? prev : current
         )
 
-        // Create swap chain parameters for other assets
-        const swapChains = new Map<string, SwapChain[]>()
-        
-        batch.assets.forEach((asset: DustBalance) => {
-          if (asset.asset !== targetAsset.asset) {
-            // Create swap chain for this asset to target asset
-            const swapChain: SwapChain[] = [{
-              pool_address: `POOL_${asset.asset}_${targetAsset.asset}`,
-              token_a: asset.asset,
-              token_b: targetAsset.asset,
-              fee_bps: 30 // 0.3% fee
-            }]
-            swapChains.set(asset.asset, swapChain)
-          }
-        })
+        // Determine which contract to use based on the batch assets
+        const hasStellarAssets = batch.assets.some(asset => asset.network === 'stellar')
+        const hasStarknetAssets = batch.assets.some(asset => asset.network === 'starknet')
 
-        // Mock contract call for demonstration
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        results.push({
-          batchId: batch.batchId,
-          success: true,
-          targetAsset: targetAsset.asset,
-          totalReceived: batch.totalValue * 0.95, // Mock 5% slippage
-          assetsProcessed: batch.assets.length,
-          originalValue: batch.totalValue
-        })
+        if (hasStellarAssets && stellarContract) {
+          // Use Stellar contract for Stellar assets
+          console.log(`Processing Stellar batch ${batch.batchId} with contract ${stellarContract.address}`)
+          
+          // Here you would implement the actual Stellar contract call
+          // For now, we'll simulate the processing
+          await new Promise(resolve => setTimeout(resolve, 1500))
+          
+          results.push({
+            batchId: batch.batchId,
+            success: true,
+            targetAsset: targetAsset.asset,
+            totalReceived: batch.totalValue * 0.95, // Mock 5% slippage
+            assetsProcessed: batch.assets.length,
+            originalValue: batch.totalValue
+          })
+        } else if (hasStarknetAssets && starknetContract) {
+          // Use Starknet contract for Starknet assets
+          console.log(`Processing Starknet batch ${batch.batchId}`)
+          
+          // Mock contract call for demonstration
+          await new Promise(resolve => setTimeout(resolve, 1500))
+          
+          results.push({
+            batchId: batch.batchId,
+            success: true,
+            targetAsset: targetAsset.asset,
+            totalReceived: batch.totalValue * 0.95, // Mock 5% slippage
+            assetsProcessed: batch.assets.length,
+            originalValue: batch.totalValue
+          })
+        } else {
+          throw new Error(`No suitable contract available for batch ${batch.batchId}`)
+        }
 
       } catch (err) {
         const error = err as Error
@@ -324,10 +369,10 @@ const useDustAggregator = (contract: StarknetContract | null, userAddress: strin
 
     setProcessedResults(results)
     return results
-  }, [contract, userAddress])
+  }, [starknetContract, stellarContract, userAddress])
 
-  // Step 4: Transfer aggregated assets to Stellar
-  const transferToStellar = useCallback(async (results: BatchResult[]): Promise<TransferResult[]> => {
+  // Step 4: Transfer aggregated assets
+  const transferToTarget = useCallback(async (results: BatchResult[]): Promise<TransferResult[]> => {
     const successfulBatches = results.filter(r => r.success)
     
     if (successfulBatches.length === 0) {
@@ -370,9 +415,9 @@ const useDustAggregator = (contract: StarknetContract | null, userAddress: strin
       const batchResults = await processBatch(batchGroups)
       await new Promise(resolve => setTimeout(resolve, 2000))
 
-      // Step 4: Transfer to Stellar
+      // Step 4: Transfer
       setCurrentStep(ProcessingStep.TRANSFERRING)
-      const transferResults = await transferToStellar(batchResults)
+      const transferResults = await transferToTarget(batchResults)
       await new Promise(resolve => setTimeout(resolve, 1500))
 
       // Step 5: Complete
@@ -393,7 +438,7 @@ const useDustAggregator = (contract: StarknetContract | null, userAddress: strin
     } finally {
       setIsProcessing(false)
     }
-  }, [isProcessing, collectDust, optimizeBatch, processBatch, transferToStellar])
+  }, [isProcessing, collectDust, optimizeBatch, processBatch, transferToTarget])
 
   const resetProcess = useCallback(() => {
     setCurrentStep(ProcessingStep.IDLE)
@@ -414,7 +459,7 @@ const useDustAggregator = (contract: StarknetContract | null, userAddress: strin
     collectDust,
     optimizeBatch,
     processBatch,
-    transferToStellar
+    transferToTarget
   }
 }
 
@@ -451,55 +496,71 @@ export default function WalletBalances() {
   const [selectedTokens, setSelectedTokens] = useState<Set<string>>(new Set())
 
   const fetchStarknetBalances = async () => {
-    const provider = new RpcProvider({
-      nodeUrl: 'https://starknet-sepolia.public.blastapi.io',
-    })
-    const { wallet } = await connectStarknet({
-      webWalletUrl: 'https://web.hydrogen.argent47.net',
-      dappName: 'Your DApp',
-      modalMode: 'canAsk',
-    })
+    try {
+      const provider = new RpcProvider({
+        nodeUrl: 'https://starknet-sepolia.public.blastapi.io',
+      })
+      const { wallet } = await connectStarknet({
+        webWalletUrl: 'https://web.hydrogen.argent47.net',
+        dappName: 'Dust Aggregator',
+        modalMode: 'canAsk',
+      })
 
-    const w = wallet as WalletLike
-    const address =
-      w.selectedAddress || w.selectedAccount?.address || w.account?.address
+      const w = wallet as WalletLike
+      const address =
+        w.selectedAddress || w.selectedAccount?.address || w.account?.address
 
-    setStarknetAddress(address ?? null)
-    if (!address) return
+      setStarknetAddress(address ?? null)
+      if (!address) return
 
-    const balancesObj: Balances = {}
-    for (const [, token] of Object.entries(TOKENS)) {
-      const contract = new Contract(ERC20_ABI, token.address, provider)
-      const result = await contract.balanceOf(address)
-      const balance = uint256.uint256ToBN(result.balance)
-      balancesObj[token.symbol] =
-        Number(balance.toString()) / 10 ** token.decimals
+      const balancesObj: Balances = {}
+      for (const [, token] of Object.entries(TOKENS)) {
+        const contract = new Contract(ERC20_ABI, token.address, provider)
+        const result = await contract.balanceOf(address)
+        const balance = uint256.uint256ToBN(result.balance)
+        balancesObj[token.symbol] =
+          Number(balance.toString()) / 10 ** token.decimals
+      }
+      setStarknetBalances(balancesObj)
+    } catch (error) {
+      console.error('Error connecting to Starknet:', error)
     }
-    setStarknetBalances(balancesObj)
   }
 
   const fetchStellarBalances = async () => {
-    const kit = initStellarKit()
-    return new Promise<void>((resolve, reject) => {
-      kit.openModal({
-        onWalletSelected: async (wallet) => {
-          try {
-            kit.setWallet(wallet.id)
-            const { address } = await kit.getAddress()
-            setStellarAddress(address)
-            const res = await fetch(
-              `https://horizon-testnet.stellar.org/accounts/${address}`
-            )
-            const data = await res.json()
-            setStellarBalances(data.balances)
-            resolve()
-          } catch (err) {
-            reject(err)
-          }
-        },
-        onClosed: () => reject(new Error('Modal closed')),
+    try {
+      const kit = initStellarKit()
+      return new Promise<void>((resolve, reject) => {
+        kit.openModal({
+          onWalletSelected: async (wallet) => {
+            try {
+              kit.setWallet(wallet.id)
+              const { address } = await kit.getAddress()
+              setStellarAddress(address)
+              const res = await fetch(
+                `https://horizon-testnet.stellar.org/accounts/${address}`
+              )
+              if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+              }
+              const data = await res.json()
+              setStellarBalances(data.balances || [])
+              resolve()
+            } catch (err) {
+              console.error('Error fetching Stellar balances:', err)
+              reject(err)
+            }
+          },
+          onClosed: () => {
+            console.log('Stellar wallet modal closed')
+            reject(new Error('Wallet selection cancelled'))
+          },
+        })
       })
-    })
+    } catch (error) {
+      console.error('Error initializing Stellar wallet:', error)
+      throw error
+    }
   }
 
   const handleTokenSelection = (tokenId: string, selected: boolean) => {
@@ -581,7 +642,11 @@ export default function WalletBalances() {
   const selectedDustBalances = getSelectedDustBalances()
   const userAddress = starknetAddress || stellarAddress
   
-  // Initialize dust aggregator with selected balances
+  // Create contract instances
+  const starknetContract: StarknetContract | null = null // You can initialize this when needed
+  const stellarContract: StellarContract | null = stellarAddress ? createStellarContract(DUST_AGGREGATOR_CONTRACT) : null
+  
+  // Initialize dust aggregator with both contract types
   const {
     currentStep,
     isProcessing,
@@ -590,7 +655,7 @@ export default function WalletBalances() {
     processedResults,
     startProcessing,
     resetProcess
-  } = useDustAggregator(null, userAddress, selectedDustBalances) // Pass null for contract in demo
+  } = useDustAggregator(starknetContract, stellarContract, userAddress, selectedDustBalances)
 
   const handleStartProcessing = async () => {
     try {
@@ -761,6 +826,7 @@ export default function WalletBalances() {
                           )}
                       </Button>
 
+                     
                       {currentStep === ProcessingStep.COMPLETE && (
                         <Button
                           onClick={resetProcess}
