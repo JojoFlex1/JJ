@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { connect as connectStarknet } from 'starknetkit'
-import { RpcProvider, Contract, uint256 } from 'starknet'
+import { RpcProvider, uint256 } from 'starknet'
 import {
   StellarWalletsKit,
   WalletNetwork,
@@ -18,6 +18,10 @@ import {
   AlbedoModule,
 } from '@creit.tech/stellar-wallets-kit'
 
+import { validateBatch, buildTransactionSummary } from '@/lib/validation'
+import { createStellarContract, StellarContract } from '@/lib/stellar/contract'
+import { createStarknetContract, StarknetContract } from '@/lib/starknet/contract'
+
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -29,6 +33,16 @@ import {
   CardHeader,
   CardFooter
 } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Progress } from "@/components/ui/progress"
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
@@ -110,15 +124,6 @@ interface WalletLike {
   account?: { address: string }
 }
 
-interface StarknetContract {
-  balanceOf: (address: string) => Promise<{ balance: unknown }>
-}
-
-interface StellarContract {
-  address: string
-  network: WalletNetwork
-}
-
 // ─── Token Definitions ────────────────────────────────────────────────────────
 
 const TOKENS: Record<string, TokenInfo> = {
@@ -154,14 +159,7 @@ const TOKENS: Record<string, TokenInfo> = {
   },
 }
 
-const ERC20_ABI = [
-  {
-    name: 'balanceOf',
-    type: 'function',
-    inputs: [{ name: 'account', type: 'felt' }],
-    outputs: [{ name: 'balance', type: 'Uint256' }],
-  },
-]
+// ERC20_ABI is now in src/lib/starknet/contract.ts
 
 const DUST_AGGREGATOR_CONTRACT = 'CAENNM2HHYAKX4V3LSQM4BEPHZ6DUSPSGPQOW6QXDY5FOHB2HMB6TMNX'
 
@@ -223,10 +221,7 @@ function initStellarKit(): StellarWalletsKit {
   return stellarWalletKit
 }
 
-const createStellarContract = (address: string): StellarContract => ({
-  address,
-  network: WalletNetwork.TESTNET
-})
+// createStellarContract is now imported from @/lib/stellar/contract
 
 // ─── useDustAggregator Hook ───────────────────────────────────────────────────
 
@@ -380,7 +375,9 @@ const useDustAggregator = (
   }, [])
 
   // Main processing orchestrator
-  const startProcessing = useCallback(async (): Promise<ProcessingResults> => {
+  const startProcessing = useCallback(async (
+    onRequestConfirm: (summary: string) => Promise<boolean>
+  ): Promise<ProcessingResults> => {
     if (isProcessing) throw new Error('Processing already in progress')
 
     setIsProcessing(true)
@@ -388,6 +385,34 @@ const useDustAggregator = (
     setCurrentStep(ProcessingStep.COLLECTING_DUST)
 
     try {
+      // ── Step 0a: Frontend batch validation ──────────────────────────────
+      const frontendCheck = validateBatch(dustBalances)
+      if (!frontendCheck.valid) {
+        throw new Error(
+          `Validation failed:\n• ${frontendCheck.errors.join('\n• ')}`
+        )
+      }
+
+      // ── Step 0b: Show transaction summary — wait for user confirmation ──
+      const summary = buildTransactionSummary(dustBalances)
+      const confirmed = await onRequestConfirm(summary)
+      if (!confirmed) {
+        throw new Error('Transaction cancelled by user.')
+      }
+
+      // ── Step 0c: Server-side validation gate (/api/validate) ─────────────
+      const validateRes = await fetch('/api/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dustBalances }),
+      })
+      const validateData = await validateRes.json()
+      if (!validateData.valid) {
+        const msgs: string[] = validateData.errors ?? ['Server rejected the transaction.']
+        throw new Error(`Server validation failed:\n• ${msgs.join('\n• ')}`)
+      }
+
+      // ── Step 1–4: Normal processing pipeline ─────────────────────────────
       const validBalances = await collectDust()
       await new Promise(resolve => setTimeout(resolve, 1000))
 
@@ -418,7 +443,7 @@ const useDustAggregator = (
     } finally {
       setIsProcessing(false)
     }
-  }, [isProcessing, collectDust, optimizeBatch, processBatch, transferToTarget])
+  }, [isProcessing, dustBalances, collectDust, optimizeBatch, processBatch, transferToTarget])
 
   const resetProcess = useCallback(() => {
     setCurrentStep(ProcessingStep.IDLE)
@@ -456,9 +481,8 @@ const CardSection: React.FC<{
   minThreshold: number
 }> = ({ token, tokenShort, price, isSelected, onSelectionChange, belowThreshold, minThreshold }) => (
   <Card
-    className={`p-2 mb-2 transition-opacity duration-200 ${
-      belowThreshold ? 'opacity-40 grayscale' : 'opacity-100'
-    }`}
+    className={`p-2 mb-2 transition-opacity duration-200 ${belowThreshold ? 'opacity-40 grayscale' : 'opacity-100'
+      }`}
   >
     <CardHeader>
       <CardTitle className="flex items-center gap-2">
@@ -583,13 +607,12 @@ const EligibilityBanner: React.FC<{
 
   return (
     <div
-      className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg mb-3 ${
-        noneEligible
+      className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg mb-3 ${noneEligible
           ? 'bg-destructive/10 text-destructive'
           : allEligible
-          ? 'bg-green-500/10 text-green-600'
-          : 'bg-yellow-500/10 text-yellow-600'
-      }`}
+            ? 'bg-green-500/10 text-green-600'
+            : 'bg-yellow-500/10 text-yellow-600'
+        }`}
     >
       <Info className="w-4 h-4 shrink-0" />
       <span>
@@ -659,9 +682,9 @@ export default function WalletBalances() {
 
       const balancesObj: Balances = {}
       for (const [, token] of Object.entries(TOKENS)) {
-        const contract = new Contract(ERC20_ABI, token.address, provider)
+        const contract = createStarknetContract(token.address, provider)
         const result = await contract.balanceOf(address)
-        const balance = uint256.uint256ToBN(result.balance)
+        const balance = uint256.uint256ToBN(result.balance as Parameters<typeof uint256.uint256ToBN>[0])
         balancesObj[token.symbol] = Number(balance.toString()) / 10 ** token.decimals
       }
       setStarknetBalances(balancesObj)
@@ -809,11 +832,41 @@ export default function WalletBalances() {
     resetProcess,
   } = useDustAggregator(starknetContract, stellarContract, userAddress, selectedDustBalances, minThreshold)
 
+  // ── Transaction confirmation dialog ─────────────────────────────────────
+  const [pendingSummary, setPendingSummary] = useState<string | null>(null)
+  const resolveConfirm = useRef<((confirmed: boolean) => void) | null>(null)
+
+  /**
+   * Called by startProcessing() to surface the summary dialog.
+   * Returns a Promise<boolean> that resolves when the user clicks
+   * Confirm (true) or Cancel (false).
+   */
+  const requestConfirm = useCallback((summary: string): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      resolveConfirm.current = resolve
+      setPendingSummary(summary)
+    })
+  }, [])
+
+  const handleConfirm = () => {
+    setPendingSummary(null)
+    resolveConfirm.current?.(true)
+    resolveConfirm.current = null
+  }
+
+  const handleCancelConfirm = () => {
+    setPendingSummary(null)
+    resolveConfirm.current?.(false)
+    resolveConfirm.current = null
+  }
+
   const handleStartProcessing = async () => {
     try {
-      const results = await startProcessing()
+      const results = await startProcessing(requestConfirm)
       console.log('Processing completed:', results)
     } catch (err) {
+      // Error is already surfaced in `error` state via useDustAggregator.
+      // Log here for debugging; never swallow silently.
       console.error('Processing failed:', err)
     }
   }
@@ -825,6 +878,22 @@ export default function WalletBalances() {
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* Transaction confirmation dialog */}
+      <AlertDialog open={pendingSummary !== null}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Transaction</AlertDialogTitle>
+            <AlertDialogDescription className="whitespace-pre-line">
+              {pendingSummary}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelConfirm}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirm}>Confirm &amp; Sign</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Wallet connect buttons */}
       <div className="flex flex-wrap max-w-full gap-4">
@@ -937,13 +1006,12 @@ export default function WalletBalances() {
                         return (
                           <li
                             key={step}
-                            className={`flex items-center gap-2 ${
-                              currentStep > stepNum
+                            className={`flex items-center gap-2 ${currentStep > stepNum
                                 ? 'text-green-600'
                                 : currentStep === stepNum
-                                ? 'text-blue-600 font-semibold'
-                                : 'text-gray-400'
-                            }`}
+                                  ? 'text-blue-600 font-semibold'
+                                  : 'text-gray-400'
+                              }`}
                           >
                             {currentStep > stepNum && <CheckCircle className="w-4 h-4" />}
                             {currentStep === stepNum && isProcessing && (
